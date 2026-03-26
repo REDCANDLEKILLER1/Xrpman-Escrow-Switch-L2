@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XMEME | Enable Token Escrow Flag</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/xrpl@3.1.0/build/xrpl-latest-min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
+    <style>
+        :root { --neon: #00FF00; --cyan: #00FFFF; --bg: #000; --dim: #004400; --warn: #ff0000; }
+        * { box-sizing: border-box; }
+        body { background: #000; color: var(--neon); font-family: 'Share Tech Mono', monospace; margin: 0; padding: 20px; min-height: 100vh; }
+        .container { max-width: 600px; margin: 40px auto; }
+        h1 { font-family: 'Orbitron', monospace; font-weight: 900; font-size: 1.3em; text-align: center; margin-bottom: 5px; text-shadow: 0 0 20px rgba(0,255,0,0.4); }
+        .sub { text-align: center; color: #555; font-size: 0.8em; margin-bottom: 30px; }
+        .panel { border: 1px solid var(--neon); background: #0a0a0a; padding: 20px; margin-bottom: 15px; box-shadow: 0 0 10px rgba(0,255,0,0.1); }
+        label { font-size: 0.75em; color: var(--dim); display: block; margin-bottom: 4px; }
+        input { background: #050505; color: var(--neon); border: 1px solid #1a1a1a; width: 100%; padding: 10px; margin-bottom: 10px; font-family: 'Share Tech Mono', monospace; font-size: 12px; outline: none; }
+        input:focus { border-color: var(--neon); }
+        button { background: #0a0a0a; color: var(--neon); border: 1px solid var(--dim); padding: 12px; width: 100%; cursor: pointer; font-weight: bold; font-family: 'Share Tech Mono', monospace; text-transform: uppercase; font-size: 13px; letter-spacing: 1px; transition: all 0.2s; }
+        button:hover:not(:disabled) { background: var(--neon); color: #000; }
+        button:disabled { border-color: #1a1a1a; background: #060606; color: #333; cursor: not-allowed; }
+        .log { background: #030303; border: 1px solid #151515; padding: 10px; font-size: 0.78em; color: #888; min-height: 80px; max-height: 200px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+        .success { color: var(--neon); }
+        .error { color: var(--warn); }
+        .info { color: var(--cyan); }
+        .step { margin-bottom: 12px; padding: 10px; border-left: 2px solid #222; }
+        .step-num { font-family: 'Orbitron', monospace; font-size: 0.7em; color: var(--dim); }
+        .net-toggle { display: flex; gap: 0; margin-bottom: 15px; border: 1px solid #222; overflow: hidden; }
+        .net-toggle button { flex: 1; margin: 0; border: none; border-right: 1px solid #222; padding: 8px; font-size: 0.75em; background: #111; color: #555; }
+        .net-toggle button:last-child { border-right: none; }
+        .net-toggle button.active { background: var(--dim); color: var(--neon); }
+        .footer { text-align: center; padding: 20px 0; }
+        .footer span { font-family: 'Orbitron', monospace; font-size: 0.7em; color: var(--neon); text-shadow: 0 0 15px rgba(0,255,0,0.5); letter-spacing: 3px; }
+        #lib-status { text-align: center; padding: 10px; font-size: 0.8em; margin-bottom: 15px; }
+
+        /* LOADING OVERLAY */
+        #loading-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); z-index: 999;
+            align-items: center; justify-content: center; flex-direction: column;
+        }
+        .spinner {
+            width: 50px; height: 50px; border: 3px solid #111;
+            border-top: 3px solid var(--neon); border-radius: 50%;
+            animation: spin 0.8s linear infinite; margin-bottom: 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        #loading-text {
+            font-family: 'Orbitron', monospace; font-size: 0.85em;
+            color: var(--neon); text-shadow: 0 0 10px rgba(0,255,0,0.4);
+            letter-spacing: 2px;
+        }
+    </style>
+</head>
+<body>
+
+<!-- LOADING OVERLAY -->
+<div id="loading-overlay">
+    <div class="spinner"></div>
+    <div id="loading-text">CONNECTING...</div>
+</div>
+
+<div class="container">
+    <h1>ENABLE TOKEN ESCROW</h1>
+    <div class="sub">ALLOW TRUST LINE LOCKING — ISSUER FLAG TOOL</div>
+    <div id="lib-status"><span style="color:#555;">Loading libraries...</span></div>
+
+    <div class="net-toggle" id="netToggle">
+        <button class="active" onclick="switchNet(this,'test')">TESTNET</button>
+        <button onclick="switchNet(this,'main')">MAINNET</button>
+        <button onclick="switchNet(this,'dev')">DEVNET</button>
+    </div>
+
+    <div class="panel" style="border-color: #333;">
+        <div class="step"><div class="step-num">STEP 1</div> Enter your <span style="color:var(--cyan)">issuer wallet</span> seed below</div>
+        <div class="step"><div class="step-num">STEP 2</div> Click <span style="color:var(--neon)">CHECK STATUS</span></div>
+        <div class="step"><div class="step-num">STEP 3</div> If not enabled, click <span style="color:var(--neon)">ENABLE FLAG</span></div>
+    </div>
+
+    <div class="panel">
+        <label>ISSUER WALLET SEED OR MNEMONIC</label>
+        <input id="seed" type="password" placeholder="sXXXXXX... or 12-word mnemonic">
+        <button id="checkBtn" disabled onclick="checkFlag()">CHECK STATUS</button>
+    </div>
+
+    <div class="panel" id="statusPanel" style="display:none;">
+        <div id="statusMsg" style="font-size: 0.9em; margin-bottom: 10px;"></div>
+        <button id="enableBtn" style="display:none; border-color:var(--neon); background:var(--neon); color:#000;" onclick="enableFlag()">ENABLE ALLOW TRUST LINE LOCKING</button>
+    </div>
+
+    <div class="panel">
+        <label>TRANSACTION LOG</label>
+        <div class="log" id="log"></div>
+    </div>
+
+    <div class="footer"><span>POWERED BY XMEME</span></div>
+</div>
+
+<script>
+    // ===== CONSTANTS =====
+    var ASF_ALLOW_TRUSTLINE_LOCKING = 17;
+    var LSF_ALLOW_TRUSTLINE_LOCKING = 0x40000000; // 1073741824 — confirmed from live mainnet
+
+    var NETWORKS = {
+        test: { nodes: ["wss://s.altnet.rippletest.net:51233"] },
+        main: { nodes: ["wss://xrplcluster.com", "wss://s1.ripple.com", "wss://s2.ripple.com"] },
+        dev:  { nodes: ["wss://s.devnet.rippletest.net:51233"] }
+    };
+    var NET = "test";
+    var wallet = null;
+    var activeClient = null;  // Persistent connection
+    var accountSequence = null;
+
+    // ===== LIBRARY CHECK =====
+    var libReady = false;
+    window.addEventListener('load', function() {
+        setTimeout(function() {
+            var el = document.getElementById('lib-status');
+            if (typeof xrpl !== 'undefined' && typeof nacl !== 'undefined') {
+                libReady = true;
+                el.innerHTML = '<span class="success">&#10003; LIBRARIES LOADED</span>';
+                document.getElementById('checkBtn').disabled = false;
+                addLog('XRPL + tweetnacl loaded. Ready.', 'success');
+            } else {
+                el.innerHTML = '<span class="error">&#10007; LIBRARY LOAD FAILED — refresh page</span>';
+                addLog('Libraries failed to load. Check internet and refresh.', 'error');
+            }
+        }, 2000);
+    });
+
+    // ===== LOADING OVERLAY =====
+    function showLoading(msg) {
+        document.getElementById('loading-text').textContent = msg || 'PROCESSING...';
+        document.getElementById('loading-overlay').style.display = 'flex';
+    }
+    function hideLoading() {
+        document.getElementById('loading-overlay').style.display = 'none';
+    }
+
+    // ===== HELPERS =====
+    function switchNet(el, net) {
+        NET = net;
+        disconnectClient();
+        document.querySelectorAll('#netToggle button').forEach(function(b) { b.classList.remove('active'); });
+        el.classList.add('active');
+        addLog('Switched to ' + net.toUpperCase(), 'info');
+        wallet = null;
+        accountSequence = null;
+        document.getElementById('statusPanel').style.display = 'none';
+    }
+
+    function addLog(msg, type) {
+        var el = document.getElementById('log');
+        var ts = new Date().toLocaleTimeString();
+        var cls = type ? ' class="' + type + '"' : '';
+        el.innerHTML += '<div><span style="color:#444">[' + ts + ']</span> <span' + cls + '>' + msg + '</span></div>';
+        el.scrollTop = el.scrollHeight;
+    }
+
+    function hexToBytes(hex) {
+        var bytes = new Uint8Array(hex.length / 2);
+        for (var i = 0; i < hex.length; i += 2) bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+        return bytes;
+    }
+    function bytesToHex(bytes) {
+        return Array.from(bytes).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('').toUpperCase();
+    }
+
+    // ===== CONNECTION MANAGEMENT =====
+    // Try multiple nodes, keep connection alive
+    async function getClient() {
+        if (activeClient && activeClient.isConnected()) return activeClient;
+
+        var nodes = NETWORKS[NET].nodes;
+        for (var i = 0; i < nodes.length; i++) {
+            try {
+                addLog('Trying ' + nodes[i] + '...', '');
+                var c = new xrpl.Client(nodes[i], { timeout: 20000 });
+                await c.connect();
+                addLog('Connected to ' + nodes[i], 'success');
+                activeClient = c;
+                // Auto-reconnect on disconnect
+                c.on('disconnected', function() {
+                    addLog('Connection lost. Will reconnect on next action.', 'error');
+                    activeClient = null;
+                });
+                return c;
+            } catch (e) {
+                addLog('Node ' + nodes[i] + ' failed: ' + e.message, 'error');
+            }
+        }
+        throw new Error('All nodes failed. Check your internet connection.');
+    }
+
+    function disconnectClient() {
+        if (activeClient) {
+            try { activeClient.disconnect(); } catch(x) {}
+            activeClient = null;
+        }
+    }
+
+    // ===== CHECK FLAG =====
+    async function checkFlag() {
+        if (!libReady) { addLog('Libraries not loaded.', 'error'); return; }
+        var input = document.getElementById('seed').value.trim();
+        if (!input) { addLog('Enter a seed first.', 'error'); return; }
+
+        showLoading('CHECKING ACCOUNT...');
+        try {
+            if (input.includes(' ')) {
+                wallet = xrpl.Wallet.fromMnemonic(input);
+            } else {
+                wallet = xrpl.Wallet.fromSeed(input);
+            }
+            addLog('Wallet: ' + wallet.address, 'info');
+
+            var client = await getClient();
+
+            var info = await client.request({
+                command: "account_info",
+                account: wallet.address,
+                ledger_index: "validated"
+            });
+
+            var flags = info.result.account_data.Flags || 0;
+            var bal = parseFloat(xrpl.dropsToXrp(info.result.account_data.Balance));
+            accountSequence = info.result.account_data.Sequence;
+            addLog('Balance: ' + bal + ' XRP | Flags: ' + flags + ' | Seq: ' + accountSequence, '');
+
+            var isEnabled = (flags & LSF_ALLOW_TRUSTLINE_LOCKING) !== 0;
+            document.getElementById('statusPanel').style.display = 'block';
+
+            if (isEnabled) {
+                document.getElementById('statusMsg').innerHTML =
+                    '<span class="success">&#10003; ALLOW TRUST LINE LOCKING IS ALREADY ENABLED</span><br>' +
+                    '<span style="color:#888;font-size:0.8em;">Your tokens can be escrowed. No action needed.</span>';
+                document.getElementById('enableBtn').style.display = 'none';
+                addLog('Flag ALREADY ENABLED!', 'success');
+            } else {
+                document.getElementById('statusMsg').innerHTML =
+                    '<span class="error">&#10007; NOT ENABLED YET</span><br>' +
+                    '<span style="color:#888;font-size:0.8em;">Click below to enable. One tx, ~12 drops fee.</span>';
+                document.getElementById('enableBtn').style.display = 'block';
+                addLog('Flag NOT enabled. Ready to activate.', 'error');
+            }
+        } catch (e) {
+            addLog('Error: ' + e.message, 'error');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    // ===== ENABLE FLAG (Manual Ed25519 signing — bypasses xrpl.js validation) =====
+    async function enableFlag() {
+        if (!wallet || accountSequence === null) { addLog('Check status first.', 'error'); return; }
+
+        showLoading('SIGNING & SUBMITTING...');
+        try {
+            var client = await getClient();
+
+            // Get validated ledger for LastLedgerSequence
+            addLog('Getting ledger info...', '');
+            var serverInfo = await client.request({ command: "server_info" });
+            var validatedSeq = serverInfo.result.info.validated_ledger.seq;
+            var lastLedger = validatedSeq + 20;
+
+            addLog('Validated ledger: ' + validatedSeq + ' | LastLedger: ' + lastLedger, '');
+
+            // Build transaction
+            var tx = {
+                TransactionType: "AccountSet",
+                Account: wallet.address,
+                SetFlag: ASF_ALLOW_TRUSTLINE_LOCKING,
+                Fee: "12",
+                Sequence: accountSequence,
+                LastLedgerSequence: lastLedger,
+                SigningPubKey: wallet.publicKey
+            };
+
+            addLog('Encoding transaction...', '');
+
+            // Encode for signing (binary codec doesn't validate SetFlag semantically)
+            var encodedHex = xrpl.encodeForSigning(tx);
+
+            // Ed25519 sign with tweetnacl
+            var privKeyHex = wallet.privateKey;
+            var pubKeyHex = wallet.publicKey;
+            if (privKeyHex.toUpperCase().startsWith('ED')) privKeyHex = privKeyHex.slice(2);
+            if (pubKeyHex.toUpperCase().startsWith('ED')) pubKeyHex = pubKeyHex.slice(2);
+
+            var secretKey = new Uint8Array(64);
+            secretKey.set(hexToBytes(privKeyHex));
+            secretKey.set(hexToBytes(pubKeyHex), 32);
+
+            var signature = nacl.sign.detached(hexToBytes(encodedHex), secretKey);
+            tx.TxnSignature = bytesToHex(signature);
+
+            addLog('Signed locally. Submitting...', 'success');
+
+            // Encode full signed transaction
+            var txBlob = xrpl.encode(tx);
+
+            // Submit blob only — no secrets transmitted
+            showLoading('SUBMITTING TO NETWORK...');
+            var result = await client.request({
+                command: "submit",
+                tx_blob: txBlob
+            });
+
+            var engineResult = result.result.engine_result;
+            var engineMsg = result.result.engine_result_message || '';
+            addLog('Server: ' + engineResult + ' — ' + engineMsg, '');
+
+            if (engineResult === "tesSUCCESS" || engineResult === "terQUEUED") {
+                addLog('TX ACCEPTED! Waiting for validation...', 'success');
+                showLoading('WAITING FOR VALIDATION...');
+
+                // Poll for validation
+                for (var attempt = 0; attempt < 8; attempt++) {
+                    await new Promise(function(r) { setTimeout(r, 4000); });
+                    try {
+                        var recheck = await client.request({
+                            command: "account_info",
+                            account: wallet.address,
+                            ledger_index: "validated"
+                        });
+                        var newFlags = recheck.result.account_data.Flags || 0;
+                        if ((newFlags & LSF_ALLOW_TRUSTLINE_LOCKING) !== 0) {
+                            addLog('CONFIRMED! AllowTrustLineLocking is ENABLED!', 'success');
+                            addLog('Your tokens can now be used with XRPL EscrowCreate.', 'info');
+                            document.getElementById('statusMsg').innerHTML = '<span class="success">&#10003; ENABLED SUCCESSFULLY!</span>';
+                            document.getElementById('enableBtn').style.display = 'none';
+                            hideLoading();
+                            return;
+                        }
+                        addLog('Waiting... (attempt ' + (attempt + 1) + '/8)', '');
+                    } catch (pollErr) {
+                        addLog('Poll error: ' + pollErr.message, '');
+                    }
+                }
+                addLog('TX submitted but not yet confirmed. It may take a few more seconds.', 'info');
+                addLog('Re-run CHECK STATUS in a moment to verify.', 'info');
+
+            } else if (engineResult === "temINVALID_FLAG") {
+                addLog('SERVER REJECTED: temINVALID_FLAG', 'error');
+                addLog('TokenEscrow amendment may not be active on this network.', 'error');
+                addLog('Ensure you are on MAINNET (went live Feb 12, 2026).', 'info');
+            } else if (engineResult === "tefPAST_SEQ") {
+                addLog('Sequence number stale. Re-checking account...', 'info');
+                accountSequence = null;
+                hideLoading();
+                await checkFlag();
+                return;
+            } else {
+                throw new Error(engineResult + ': ' + engineMsg);
+            }
+
+        } catch (e) {
+            addLog('Error: ' + e.message, 'error');
+        } finally {
+            hideLoading();
+        }
+    }
+</script>
+</body>
+</html>
